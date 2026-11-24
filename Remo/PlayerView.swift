@@ -12,15 +12,10 @@ struct PlayerView: View {
     let surface: VideoSurface
     let title: String
 
-    private static let controlsHitPadding: CGFloat = 12
-
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.scenePhase) private var scenePhase
-    @State private var controlsDimmed = false
-    @State private var controlsFrame = CGRect.zero
     @State private var keyboardVisible = false
     @State private var keyboardFrame = CGRect.zero
-    @State private var fadeTask: Task<Void, Never>?
     @State private var resizeReconnectTask: Task<Void, Never>?
     @State private var measuredSceneSize = CGSize.zero
 
@@ -35,7 +30,7 @@ struct PlayerView: View {
             // it.
             TrackpadView(
                 onInput: player.handleTrackpad,
-                excludedRects: [controlsFrame] + (keyboardVisible ? [keyboardFrame] : []),
+                excludedRects: keyboardVisible ? [keyboardFrame] : [],
                 showsWheel: player.phase == .streaming && player.remoteControlAvailable,
                 controlsPointer: player.phase == .streaming && player.remoteControlAvailable,
                 surface: surface, videoSize: player.videoSize,
@@ -83,16 +78,12 @@ struct PlayerView: View {
                 .transition(.move(edge: .bottom))
             }
         }
-        .overlay {
-            controlsOverlay
-        }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         // Watching or driving the remote screen doesn’t touch the phone’s own screen often enough
         // to keep it awake, so auto-lock is off for as long as the player is up.
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear {
-            fadeTask?.cancel()
             resizeReconnectTask?.cancel()
             resizeReconnectTask = nil
             player.releaseKeyboard(includingModifiers: true)
@@ -112,11 +103,6 @@ struct PlayerView: View {
                 setKeyboardVisible(false)
             }
         }
-        .task(id: player.phase) {
-            withAnimation { controlsDimmed = false }
-            guard player.phase == .streaming, !voiceOver else { return }
-            scheduleFadeOut()
-        }
     }
 
     private var status: String? {
@@ -127,99 +113,6 @@ struct PlayerView: View {
         }
     }
 
-    @ViewBuilder
-    private var controlsOverlay: some View {
-        if #available(iOS 27.1, *) {
-            GeometryReader { proxy in
-                let layout = ScreenOcclusionLayout(proxy: proxy)
-                let insets = layout.topLeadingInsets(
-                    for: controlsFrame.size,
-                    innerPadding: Self.controlsHitPadding)
-                controls
-                    .onGeometryChange(for: CGRect.self) {
-                        $0.frame(in: .global)
-                    } action: {
-                        controlsFrame = $0
-                    }
-                    .padding(.leading, insets.leading)
-                    .padding(.top, insets.top)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-            .ignoresSafeArea()
-        } else {
-            controls
-                .onGeometryChange(for: CGRect.self) {
-                    $0.frame(in: .global)
-                } action: {
-                    controlsFrame = $0
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-
-    private var controls: some View {
-        let showKeyboardButton =
-            player.remoteControlAvailable && (!controlsDimmed || keyboardVisible)
-
-        return HStack(spacing: 0) {
-            Button {
-                player.disconnect()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "xmark")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .padding(.trailing, showKeyboardButton ? 10 : 14)
-                }
-                .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Disconnect from \(title)")
-
-            if showKeyboardButton {
-                Rectangle()
-                    .fill(.white.opacity(0.2))
-                    .frame(width: 1, height: 18)
-
-                Button {
-                    setKeyboardVisible(!keyboardVisible)
-                } label: {
-                    Image(systemName: "keyboard")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(keyboardVisible ? Color(white: 0.08) : .white)
-                        .frame(width: 34, height: 34)
-                        .background(
-                            keyboardVisible ? Color(white: 0.96) : .white.opacity(0.14),
-                            in: .circle)
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 8)
-                .padding(.trailing, 5)
-                .accessibilityLabel(keyboardVisible ? "Hide keyboard" : "Show keyboard")
-            }
-        }
-        .glassEffect(.regular.tint(.black.opacity(0.45)).interactive(), in: .capsule)
-        .opacity(controlsDimmed && !keyboardVisible ? 0.4 : 1)
-        .overlay {
-            if controlsDimmed && !keyboardVisible {
-                Capsule()
-                    .fill(.clear)
-                    .contentShape(.capsule)
-                    .onTapGesture {
-                        withAnimation(.spring(duration: 0.32, bounce: 0.1)) {
-                            controlsDimmed = false
-                        }
-                        scheduleFadeOut()
-                    }
-            }
-        }
-        .padding(Self.controlsHitPadding)
-    }
-
     private func setKeyboardVisible(_ visible: Bool) {
         if !visible {
             // Release any key mid-hold without clearing active modifiers, so modified trackpad
@@ -228,14 +121,6 @@ struct PlayerView: View {
         }
         withAnimation(.spring) {
             keyboardVisible = visible
-            if visible {
-                controlsDimmed = false
-            }
-        }
-        if visible {
-            fadeTask?.cancel()
-        } else {
-            scheduleFadeOut()
         }
     }
 
@@ -261,16 +146,6 @@ struct PlayerView: View {
             var updated = latest
             updated.virtualDisplay = settledTarget
             player.reconnect(stream: updated)
-        }
-    }
-
-    private func scheduleFadeOut() {
-        fadeTask?.cancel()
-        guard player.phase == .streaming, !voiceOver, !keyboardVisible else { return }
-        fadeTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled, !keyboardVisible else { return }
-            withAnimation(.easeOut(duration: 0.6)) { controlsDimmed = true }
         }
     }
 }
