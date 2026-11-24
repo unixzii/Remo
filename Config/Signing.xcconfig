@@ -1,0 +1,15 @@
+// Signing for the Remo and RemoServer targets.
+//
+// To sign with your own team, create Signing.local.xcconfig next to this file (it is
+// git-ignored) and set either value there, e.g.
+//
+//     REMO_DEVELOPMENT_TEAM = ABCDE12345
+//     REMO_BUNDLE_ID_PREFIX = com.example
+//
+// The apps' bundle identifiers are $(REMO_BUNDLE_ID_PREFIX).Remo and
+// $(REMO_BUNDLE_ID_PREFIX).RemoServer.
+
+REMO_DEVELOPMENT_TEAM = V8K4KDZ2JN
+REMO_BUNDLE_ID_PREFIX = me.cyandev
+
+#include? "Signing.local.xcconfig"

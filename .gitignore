@@ -6,3 +6,4 @@ xcuserdata/
 *.xcuserstate
 *.xcresult/
 /WireGuard/target/
+Config/Signing.local.xcconfig
