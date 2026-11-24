@@ -30,9 +30,7 @@ for arch in $ARCHS; do
     case "$PLATFORM_NAME:$arch" in
         iphoneos:arm64) target=aarch64-apple-ios ;;
         iphonesimulator:arm64) target=aarch64-apple-ios-sim ;;
-        iphonesimulator:x86_64) target=x86_64-apple-ios ;;
         macosx:arm64) target=aarch64-apple-ios-macabi ;;
-        macosx:x86_64) target=x86_64-apple-ios-macabi ;;
         *)
             echo "error: Unsupported WireGuard build target $PLATFORM_NAME:$arch." >&2
             exit 1
