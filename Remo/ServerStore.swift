@@ -151,7 +151,7 @@ nonisolated enum Keychain {
 
 private nonisolated enum Thumbnails {
     private static var directory: URL {
-        URL.applicationSupportDirectory.appending(path: "Thumbnails", directoryHint: .isDirectory)
+        URL.storageDirectory.appending(path: "Thumbnails", directoryHint: .isDirectory)
     }
 
     private static func url(for id: UUID) -> URL {

@@ -61,7 +61,7 @@ nonisolated final class SessionLog: @unchecked Sendable {
 /// Where each server's most recent session log lives.
 nonisolated enum SessionLogs {
     private static var directory: URL {
-        URL.applicationSupportDirectory.appending(path: "Logs", directoryHint: .isDirectory)
+        URL.storageDirectory.appending(path: "Logs", directoryHint: .isDirectory)
     }
 
     static func url(for id: UUID) -> URL {

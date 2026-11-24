@@ -25,7 +25,7 @@ swift run remo-engine client <host> --screen           # opens a video window (m
 
 `--wire-stats` and `--trace-heartbeats` print transport-level diagnostics; `REMO_AUDIO_TRACE_DIR` dumps audio PCM/timing. Run `remo-engine` with no args for full usage.
 
-Apps: `Remo.xcodeproj`, schemes `Remo` (iOS client) and `RemoServer` (macOS server), e.g. `xcodebuild -project Remo.xcodeproj -scheme RemoServer build`. The iOS target's "Build WireGuard" phase runs `WireGuard/build.sh`, which needs `rustup` plus `rustup target add aarch64-apple-ios aarch64-apple-ios-sim`. Rust tests: `cd WireGuard && cargo test`.
+Apps: `Remo.xcodeproj`, schemes `Remo` (iOS/iPadOS client, also built for Mac Catalyst) and `RemoServer` (macOS server), e.g. `xcodebuild -project Remo.xcodeproj -scheme RemoServer build` or `-scheme Remo -destination 'platform=macOS,variant=Mac Catalyst'`. The client target's "Build WireGuard" phase runs `WireGuard/build.sh`, which needs `rustup` plus the Rust target for each destination: `aarch64-apple-ios`, `aarch64-apple-ios-sim`, and `aarch64-apple-ios-macabi`/`x86_64-apple-ios-macabi` for Catalyst. Saved servers live in the Keychain, and Catalyst offers only the data protection keychain, so the Catalyst build needs `Remo/Remo-Catalyst.entitlements` (`keychain-access-groups`) and a provisioning profile: it can't be signed ad-hoc. Running it on a Mac that isn't registered to the team needs Developer ID signing. On the Mac, the app's files go under `URL.storageDirectory` (its own folder in Application Support), not the shared one. Rust tests: `cd WireGuard && cargo test`.
 
 Formatting: each package has a `.swift-format` (4-space indent); run with `xcrun swift-format`.
 
