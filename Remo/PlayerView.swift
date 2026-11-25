@@ -30,7 +30,6 @@ struct PlayerView: View {
             // it.
             TrackpadView(
                 onInput: player.handleTrackpad,
-                excludedRects: keyboardVisible ? [keyboardFrame] : [],
                 showsWheel: canControlRemote,
                 controlsPointer: canControlRemote,
                 surface: surface, videoSize: player.videoSize,
