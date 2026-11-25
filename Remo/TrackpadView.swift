@@ -118,8 +118,7 @@ struct TrackpadView: View {
                     .padding(.trailing, trailing)
                     .padding(.bottom, bottomInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .animation(.spring(duration: 0.36, bounce: 0.06), value: bottomInset)
-                    .animation(.spring(duration: 0.36, bounce: 0.06), value: trailing)
+                    .animation(.spring(duration: 0.36, bounce: 0.06), value: [bottomInset, trailing, wheelShown ? 1.0 : 0.0])
             }
             .ignoresSafeArea()
         } else {
@@ -131,7 +130,7 @@ struct TrackpadView: View {
                 }
                 .padding(.trailing, 16)
                 .padding(.bottom, bottomInset)
-                .animation(.spring(duration: 0.36, bounce: 0.06), value: bottomInset)
+                .animation(.spring(duration: 0.36, bounce: 0.06), value: [bottomInset, wheelShown ? 1.0 : 0.0])
         }
     }
 

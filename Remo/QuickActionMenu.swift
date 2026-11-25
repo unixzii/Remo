@@ -177,6 +177,10 @@ private typealias SpringVec2 = AnimatablePair<CGFloat, CGFloat>
 private final class QuickActionAnchorView: UIView {
     private static let holdExpandDelay: TimeInterval = 0.35
     private static let dragExpandThreshold: CGFloat = 8
+    
+    static let orbBackgroundColor = UIColor.black.withAlphaComponent(0.35)
+    static let orbBorderColor = UIColor.white.withAlphaComponent(0.25)
+    static let orbRestingAlpha = 0.45
 
     private var orbIcon: QuickActionIcon?
     private var onTap: (() -> Void)?
@@ -195,7 +199,6 @@ private final class QuickActionAnchorView: UIView {
     private var activeOverlay: QuickActionWindowOverlay?
 
     private let lightImpact = UIImpactFeedbackGenerator(style: .light)
-    private let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
     private let softImpact = UIImpactFeedbackGenerator(style: .soft)
     private let selectionFeedback = UISelectionFeedbackGenerator()
 
@@ -252,11 +255,11 @@ private final class QuickActionAnchorView: UIView {
 
     private func setupRestingOrb() {
         orbContainer.isUserInteractionEnabled = false
-        orbContainer.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        orbContainer.backgroundColor = Self.orbBackgroundColor
         orbContainer.layer.cornerCurve = .continuous
         orbContainer.layer.borderWidth = 1
-        orbContainer.layer.borderColor = UIColor.white.withAlphaComponent(0.25).cgColor
-        orbContainer.alpha = 0.45
+        orbContainer.layer.borderColor = Self.orbBorderColor.cgColor
+        orbContainer.alpha = Self.orbRestingAlpha
         addSubview(orbContainer)
 
         orbIconView.contentMode = .scaleAspectFit
@@ -274,13 +277,10 @@ private final class QuickActionAnchorView: UIView {
     }
 
     private func setRestingPressed(_ pressed: Bool) {
-        UIView.animate(
-            withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0,
-            options: [.allowUserInteraction, .beginFromCurrentState]
-        ) {
+        UIView.animate(.spring(duration: 0.35, bounce: 0.45)) {
             self.orbContainer.transform =
                 pressed ? CGAffineTransform(scaleX: 1.12, y: 1.12) : .identity
-            self.orbContainer.alpha = pressed ? 1.0 : 0.45
+            self.orbContainer.alpha = pressed ? 1.0 : Self.orbRestingAlpha
         }
     }
 
@@ -335,7 +335,7 @@ private final class QuickActionAnchorView: UIView {
                 let chosen = activeOverlay?.collapseAndReturnSelectedItem()
                 onExpandedChanged?(false)
                 if let chosen {
-                    mediumImpact.impactOccurred()
+                    lightImpact.impactOccurred()
                     chosen.action()
                 }
             } else {
@@ -377,27 +377,21 @@ private final class QuickActionAnchorView: UIView {
 
         orbContainer.isHidden = true
         orbContainer.transform = .identity
-        orbContainer.alpha = 0.45
+        orbContainer.alpha = Self.orbRestingAlpha
 
-        lightImpact.impactOccurred()
+        softImpact.impactOccurred()
         onExpandedChanged?(true)
 
         let overlay = QuickActionWindowOverlay(
             frame: window.bounds,
-            orbFrame: orbFrame,
             orbIcon: orbIcon,
             items: items,
             initialFinger: fingerInWindow,
             orbFrameProvider: { [weak self] in self?.orbFrameInWindow ?? orbFrame },
             onSelectionChanged: { [weak self] armed in
-                guard let self else { return }
-                if armed {
-                    self.selectionFeedback.selectionChanged()
-                    self.selectionFeedback.prepare()
-                } else {
-                    self.softImpact.impactOccurred()
-                    self.softImpact.prepare()
-                }
+                guard armed, let self else { return }
+                selectionFeedback.selectionChanged()
+                selectionFeedback.prepare()
             },
             onDidFinishCollapse: { [weak self, weak window] overlayView in
                 guard let self else {
@@ -431,7 +425,7 @@ private final class QuickActionAnchorView: UIView {
         activeOverlay = nil
         orbContainer.isHidden = false
         orbContainer.transform = .identity
-        orbContainer.alpha = 0.45
+        orbContainer.alpha = Self.orbRestingAlpha
         if wasExpanded {
             onExpandedChanged?(false)
         }
@@ -456,7 +450,6 @@ private final class QuickActionWindowOverlay: UIView {
     private let onSelectionChanged: (Bool) -> Void
     private let onDidFinishCollapse: (QuickActionWindowOverlay) -> Void
 
-    private var originOrbFrame: CGRect
     private var expandedPanelFrame: CGRect
     private var touchOriginX: CGFloat
     private let panelHeight: CGFloat
@@ -469,9 +462,10 @@ private final class QuickActionWindowOverlay: UIView {
     private let panelShadowView = UIView()
     private let panelSurfaceView = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let panelTintView = UIView()
+    private let orbContainer = UIView()
     private let orbIconView = UIImageView()
     private let highlightBarView = UIView()
-    private let rowContainerView = UIView()
+    private let rowContainer = UIView()
     private var rowViews: [QuickActionRowView] = []
 
     // Interactive state
@@ -481,6 +475,7 @@ private final class QuickActionWindowOverlay: UIView {
 
     // SwiftUI.Spring states stepped via UIUpdateLink
     private var expandSpring = SpringState<CGFloat>(0, duration: 0.38, bounce: 0.26)
+    private var orbVisSpring = SpringState<CGFloat>(1, duration: 0.38, bounce: 0.26)
     private var barVisSpring = SpringState<CGFloat>(0, duration: 0.24, bounce: 0.22)
     private var barTopSpring: SpringState<CGFloat>
     private var selectSprings: [SpringState<CGFloat>]
@@ -497,7 +492,6 @@ private final class QuickActionWindowOverlay: UIView {
 
     init(
         frame: CGRect,
-        orbFrame: CGRect,
         orbIcon: QuickActionIcon,
         items: [QuickActionItem],
         initialFinger: CGPoint,
@@ -506,7 +500,6 @@ private final class QuickActionWindowOverlay: UIView {
         onDidFinishCollapse: @escaping (QuickActionWindowOverlay) -> Void
     ) {
         self.items = items
-        self.originOrbFrame = orbFrame
         self.touchOriginX = initialFinger.x
         self.orbFrameProvider = orbFrameProvider
         self.onSelectionChanged = onSelectionChanged
@@ -522,7 +515,7 @@ private final class QuickActionWindowOverlay: UIView {
             SpringState<CGFloat>(0, duration: 0.16, bounce: 0)
         }
         self.expandedPanelFrame = Self.computeExpandedPanelFrame(
-            orbFrame: orbFrame, panelHeight: panelHeight, in: frame)
+            orbFrame: orbFrameProvider(), panelHeight: panelHeight, in: frame)
 
         super.init(frame: frame)
         isUserInteractionEnabled = false
@@ -573,11 +566,17 @@ private final class QuickActionWindowOverlay: UIView {
 
         panelTintView.backgroundColor = .clear
         panelSurfaceView.contentView.addSubview(panelTintView)
+        
+        orbContainer.backgroundColor = QuickActionAnchorView.orbBackgroundColor
+        orbContainer.layer.cornerCurve = .continuous
+        orbContainer.layer.borderWidth = 1
+        orbContainer.layer.borderColor = QuickActionAnchorView.orbBorderColor.cgColor
+        stageView.addSubview(orbContainer)
 
         orbIconView.contentMode = .scaleAspectFit
         orbIconView.tintColor = .white
         orbIconView.image = orbIcon.makeUIImage(pointSize: 16, weight: .medium)
-        panelSurfaceView.contentView.addSubview(orbIconView)
+        orbContainer.addSubview(orbIconView)
 
         // Layer 2: Oversized white highlight bar (pure backing surface, NO duplicate text)
         highlightBarView.backgroundColor = .white
@@ -590,11 +589,11 @@ private final class QuickActionWindowOverlay: UIView {
         stageView.addSubview(highlightBarView)
 
         // Layer 3: The single top-layer rows
-        rowContainerView.clipsToBounds = true
-        stageView.addSubview(rowContainerView)
+        rowContainer.clipsToBounds = true
+        stageView.addSubview(rowContainer)
         rowViews = items.map { item in
             let row = QuickActionRowView(item: item)
-            rowContainerView.addSubview(row)
+            rowContainer.addSubview(row)
             return row
         }
     }
@@ -604,6 +603,7 @@ private final class QuickActionWindowOverlay: UIView {
     func expand() {
         isCollapsing = false
         expandSpring.target = 1
+        orbVisSpring.target = 0
         barVisSpring.target = 1
         if let armedIndex {
             barTopSpring.snap(to: Self.rowTop(for: armedIndex))
@@ -692,10 +692,10 @@ private final class QuickActionWindowOverlay: UIView {
     func collapseAndReturnSelectedItem(executeSelection: Bool = true) -> QuickActionItem? {
         let selected = executeSelection ? armedIndex.map { items[$0] } : nil
         isCollapsing = true
-        originOrbFrame = orbFrameProvider()
         armedIndex = nil
 
         expandSpring.target = 0
+        orbVisSpring.target = QuickActionAnchorView.orbRestingAlpha
         barVisSpring.target = 0
         microSpring.target = .zero
         stretchScaleSpring.target = SpringVec2(1, 1)
@@ -768,6 +768,7 @@ private final class QuickActionWindowOverlay: UIView {
         let dt = min(max(rawDt, 1.0 / 240.0), 1.0 / 30.0)
 
         expandSpring.step(dt: dt)
+        orbVisSpring.step(dt: dt)
         barVisSpring.step(dt: dt)
         barTopSpring.step(dt: dt)
         microSpring.step(dt: dt)
@@ -800,7 +801,7 @@ private final class QuickActionWindowOverlay: UIView {
         let bvClamped = clamp01(bv)
 
         // Interpolate panel frame with UNCLAMPED spring `ep` for authentic overshoot & settle!
-        let orb = originOrbFrame
+        let orb = orbFrameProvider()
         let target = expandedPanelFrame
         let w = max(20, orb.width + ep * (target.width - orb.width))
         let h = max(20, orb.height + ep * (target.height - orb.height))
@@ -834,20 +835,26 @@ private final class QuickActionWindowOverlay: UIView {
         panelShadowView.frame = panelFrame
         panelShadowView.layer.shadowPath =
             UIBezierPath(roundedRect: panelShadowView.bounds, cornerRadius: cornerRadius).cgPath
-        panelShadowView.layer.shadowOpacity = Float(0.18 + epClamped * 0.16)
+        panelShadowView.layer.shadowOpacity = Float(epClamped * 0.18)
         panelShadowView.layer.shadowRadius = 10 + epClamped * 14
 
         panelSurfaceView.frame = panelShadowView.bounds
         panelSurfaceView.layer.cornerRadius = cornerRadius
+        panelSurfaceView.alpha = clamp01(epClamped * 3.4)
         panelTintView.frame = panelSurfaceView.bounds
 
         // Resting orb glyph crossfades smoothly out as morph begins
-        let orbIconAlpha = clamp01(1 - epClamped * 3.4)
-        orbIconView.alpha = orbIconAlpha * 0.92
+        orbContainer.frame = panelFrame
+        orbContainer.layer.cornerRadius = cornerRadius
+        orbContainer.alpha = clamp01(orbVisSpring.value)
+        
         orbIconView.bounds = CGRect(x: 0, y: 0, width: 18, height: 18)
         orbIconView.center = CGPoint(x: w / 2, y: h / 2)
         let orbIconScale = max(0.5, 1 - epClamped * 0.35)
         orbIconView.transform = CGAffineTransform(scaleX: orbIconScale, y: orbIconScale)
+        let orbIconBlurFilter = QuartzFilter.gaussianBlur()
+        orbIconBlurFilter.radius = epClamped * 20
+        orbIconView.layer.quartzFilters = [orbIconBlurFilter]
 
         // Single top-layer rows opacity
         let rowsAlpha = clamp01((epClamped - 0.44) * 2.0)
@@ -872,11 +879,11 @@ private final class QuickActionWindowOverlay: UIView {
         }
 
         // Layer 3: Single top-layer rows (smooth color lerp + magnetic center attraction)
-        rowContainerView.frame = panelFrame
-        rowContainerView.layer.cornerRadius = cornerRadius
+        rowContainer.frame = panelFrame
+        rowContainer.layer.cornerRadius = cornerRadius
         let rowContainerBlurFilter = QuartzFilter.gaussianBlur()
         rowContainerBlurFilter.radius = (1 - epClamped) * 20
-        rowContainerView.layer.quartzFilters = [rowContainerBlurFilter]
+        rowContainer.layer.quartzFilters = [rowContainerBlurFilter]
         for (index, rowView) in rowViews.enumerated() {
             let sp = selectSprings[index].value
             let spClamped = clamp01(sp)

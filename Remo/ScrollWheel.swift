@@ -19,7 +19,7 @@ struct ScrollWheel: View {
     static let capsuleWidth: CGFloat = 36
     static let horizontalHitPadding: CGFloat = 4
     static let hitWidth: CGFloat = capsuleWidth + horizontalHitPadding * 2
-    private static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+    private static let shape = RoundedRectangle(cornerRadius: capsuleWidth / 2, style: .continuous)
 
     /// Where the ticks sit; follows the finger and springs onto a detent when it lifts.
     @State private var travel: CGFloat = 0
@@ -54,7 +54,7 @@ struct ScrollWheel: View {
         .sensoryFeedback(.selection, trigger: detents)
         .accessibilityElement()
         .accessibilityLabel("Scroll wheel")
-        .accessibilityHint("Swipe up or down to scroll one line. Double-tap to right-click.")
+        .accessibilityHint("Swipe up or down to scroll one line.")
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment: onInput(.scroll(lines: -1))
@@ -62,7 +62,6 @@ struct ScrollWheel: View {
             @unknown default: break
             }
         }
-        .accessibilityAction { onInput(.button(.rightClick)) }
     }
 
     private func moved(_ translation: CGFloat) {
@@ -79,9 +78,6 @@ struct ScrollWheel: View {
     /// A touch that barely moved is a right-click.
     private func ended(_ translation: CGSize, cancelled: Bool) {
         pressed = false
-        if !cancelled, sentSteps == 0, abs(translation.width) < 4, abs(translation.height) < 4 {
-            onInput(.button(.rightClick))
-        }
         let settled = dragBase + CGFloat(sentSteps) * Self.step
         dragBase = settled
         sentSteps = 0
