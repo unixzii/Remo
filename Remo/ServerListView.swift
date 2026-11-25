@@ -51,6 +51,7 @@ struct ServerListView: View {
 }
 
 private struct ServerRow: View {
+    @Environment(\.appearsActive) private var appearsActive
     let server: RemoteServer
     let thumbnail: UIImage?
 
@@ -61,6 +62,9 @@ private struct ServerRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(server.displayName)
                     .font(.headline)
+                    .foregroundStyle(
+                        appearsActive ? AnyShapeStyle(.primary) : AnyShapeStyle(Color(.label))
+                    )
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     if server.useWireGuard {
@@ -73,10 +77,14 @@ private struct ServerRow: View {
                         .lineLimit(1)
                 }
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(
+                    appearsActive
+                        ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color(.secondaryLabel)))
                 LastSessionText(date: server.lastSessionAt, compact: true)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(
+                        appearsActive
+                            ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color(.secondaryLabel)))
             }
         }
         .padding(.vertical, 4)
@@ -121,6 +129,10 @@ struct ServerThumbnail: View {
                 }
             }
             .clipShape(.rect(cornerRadius: cornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+            }
             .accessibilityHidden(true)
     }
 }

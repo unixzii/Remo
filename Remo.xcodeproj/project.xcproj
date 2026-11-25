@@ -23,7 +23,13 @@
     },
   ],
   "files": [
-    { "kind": "group", "path": "Config", "children": [ { "path": "Signing.xcconfig" } ] },
+    {
+      "kind": "group",
+      "path": "Config",
+      "children": [
+        { "path": "Signing.xcconfig" },
+      ],
+    },
     { "kind": "folder", "path": "Remo", "target-membership": [ "Remo" ] },
     { "kind": "folder", "path": "RemoServer", "target-membership": [ "RemoServer" ] },
     {
@@ -32,8 +38,7 @@
       "children": [
         { "path": "Packages/RemoEngine/Sources/RemoEngineCLI/TestPattern.swift", "target-membership": [ "RemoServer/compile-sources" ] },
       ],
-    },
-    {
+    }, {
       "kind": "group",
       "name": "Products",
       "children": [
@@ -113,7 +118,10 @@
           "$(DERIVED_FILE_DIR)/RemoWireGuard",
         ],
         "MARKETING_VERSION": "1.0",
-        "OTHER_LDFLAGS": ["$(inherited)", "-lremo_wireguard"],
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-lremo_wireguard",
+        ],
         "PRODUCT_BUNDLE_IDENTIFIER": "$(REMO_BUNDLE_ID_PREFIX).Remo",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
@@ -127,10 +135,9 @@
         "SWIFT_OBJC_BRIDGING_HEADER": "$(SRCROOT)/WireGuard/include/RemoWireGuard.h",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "5.0",
-        "TARGETED_DEVICE_FAMILY": "1,2",
+        "TARGETED_DEVICE_FAMILY": "1,2,6",
       },
-    },
-    {
+    }, {
       "name": "RemoServer",
       "id": "3C5E1D7B2F8B4A6100D4E9B2",
       "product": "Products/RemoServer.app",

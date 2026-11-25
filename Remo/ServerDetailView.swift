@@ -33,10 +33,31 @@ struct ServerDetailView: View {
     @State private var customBitRate: Bool
     @State private var customBitRateText: String
     @State private var saveFailed = false
+    #if targetEnvironment(macCatalyst)
+    /// Matches macOS System Settings grouped-form cards on Mac Catalyst, where UIKit's
+    /// inset-grouped Form defaults to iOS's gray canvas with white cards.
+    fileprivate static let catalystCardBackground = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.045)
+                : UIColor(white: 0, alpha: 0.027)
+        })
+    fileprivate static let catalystRowInsets = EdgeInsets(
+        top: 8, leading: 12, bottom: 8, trailing: 12)
+    fileprivate static let catalystHeaderRowInsets = EdgeInsets(
+        top: 12, leading: 12, bottom: 12, trailing: 12)
+    fileprivate static let catalystSummaryHeaderInsets = EdgeInsets(
+        top: 4, leading: 0, bottom: 4, trailing: 0)
+    fileprivate static let catalystSectionHeaderInsets = EdgeInsets(
+        top: 4, leading: 12, bottom: 6, trailing: 12)
+    fileprivate static let catalystSectionFooterInsets = EdgeInsets(
+        top: 6, leading: 12, bottom: 0, trailing: 12)
+    #else
     @State private var isWide = false
 
     /// Detail width from which Connect sits beside the name instead of spanning the page.
     private static let wideLayoutWidth: CGFloat = 520
+    #endif
 
     init(
         server: RemoteServer, thumbnail: UIImage?, sessionLog: URL?, sceneSize: CGSize,
@@ -77,10 +98,12 @@ struct ServerDetailView: View {
         Group {
             if isEditing {
                 Form { editor }
+                    .catalystFormChrome()
             } else {
                 summary
             }
         }
+        .formStyle(.grouped)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isEditing)
         .toolbar {
@@ -108,89 +131,145 @@ struct ServerDetailView: View {
         }
     }
 
-    // A plain stack rather than Form rows, which clip and inset the heading off the left edge.
     private var summary: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 16) {
-                    ServerThumbnail(image: thumbnail, cornerRadius: 20)
-                    if isWide {
-                        HStack(spacing: 16) {
-                            heading
-                            Spacer(minLength: 0)
-                            connectButton
-                        }
-                    } else {
-                        heading
-                    }
-                }
-
-                if !isWide {
+        Form {
+            #if targetEnvironment(macCatalyst)
+            Section {
+                HStack(spacing: 16) {
+                    ServerThumbnail(image: thumbnail, cornerRadius: 10)
+                        .frame(width: 144)
+                    heading
+                    Spacer(minLength: 0)
                     connectButton
                 }
-
+                .listRowBackground(Color.clear)
+                .listRowInsets(Self.catalystSummaryHeaderInsets)
+            } footer: {
                 if let failure {
                     Text(failure)
                         .foregroundStyle(.red)
+                        .listRowInsets(Self.catalystSectionFooterInsets)
                 }
+            }
 
-                VStack(spacing: 0) {
-                    LabeledContent("Address") {
-                        Text(server.address.displayString).monospaced()
-                    }
-                    .frame(minHeight: 52)
-                    Divider()
-                    LabeledContent("Connection", value: server.useWireGuard ? "WireGuard" : "Direct")
-                        .frame(minHeight: 52)
-                }
-                .padding(.horizontal, 16)
-                .background(
-                    Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 26))
+            Section {
+                connectionRows
+                    .catalystCardRow()
+            } header: {
+                sectionHeader("Server")
+            }
+            #else
+            // Place the hero header in the first section header so insetGrouped row
+            // clipping never trims the heading or button corners.
+            Section {
+                connectionRows
+            } header: {
+                iosHeader
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 20, trailing: 0))
+            }
+            #endif
 
-                VStack(spacing: 0) {
+            Section {
+                Group {
                     if server.stream.usesVirtualDisplay {
-                        let vd = RemoteServer.StreamSettings.virtualDisplay(
-                            for: sceneSize)
+                        let vd = RemoteServer.StreamSettings.virtualDisplay(for: sceneSize)
                         LabeledContent(
                             "Display", value: "Virtual (\(vd.pixelWidth) × \(vd.pixelHeight))")
-                            .frame(minHeight: 52)
                     } else {
                         LabeledContent("Resolution", value: server.stream.resolutionSummary)
-                            .frame(minHeight: 52)
                     }
-                    Divider()
                     LabeledContent("Frame Rate", value: "\(server.stream.framesPerSecond) fps")
-                        .frame(minHeight: 52)
-                    Divider()
                     LabeledContent("Max Bit Rate", value: server.stream.bitRateSummary)
-                        .frame(minHeight: 52)
-                    Divider()
                     LabeledContent("Audio", value: server.stream.streamsAudio ? "On" : "Off")
-                        .frame(minHeight: 52)
                 }
-                .padding(.horizontal, 16)
-                .background(
-                    Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 26))
+                .catalystCardRow()
+            } header: {
+                #if targetEnvironment(macCatalyst)
+                sectionHeader("Stream")
+                #endif
+            }
 
-                if let sessionLog {
+            if let sessionLog {
+                Section {
                     let file = SessionLogFile(
                         url: sessionLog, name: "Remo \(server.displayName) \(logDate).log")
                     ShareLink(item: file, preview: SharePreview(file.name)) {
                         Label("Export Last Session Log", systemImage: "doc.text")
-                            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                            .padding(.horizontal, 16)
                     }
-                    .background(
-                        Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 26))
+                    .catalystCardButtonRow()
                 }
             }
-            .padding(20)
         }
-        .background(Color(.systemGroupedBackground))
-        .onGeometryChange(for: Bool.self) { $0.size.width >= Self.wideLayoutWidth } action: {
+        .catalystFormChrome()
+        #if !targetEnvironment(macCatalyst)
+        .onGeometryChange(for: Bool.self) {
+            $0.size.width >= Self.wideLayoutWidth
+        } action: {
             isWide = $0
         }
+        #endif
     }
+
+    @ViewBuilder
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        #if targetEnvironment(macCatalyst)
+        Text(title)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color(.label))
+            .textCase(nil)
+            .listRowInsets(Self.catalystSectionHeaderInsets)
+        #else
+        Text(title)
+        #endif
+    }
+
+    @ViewBuilder private var connectionRows: some View {
+        // Use an explicit HStack rather than LabeledContent so long hostnames aren't
+        // capped at half the row width while leaving empty space beside the short label.
+        HStack(spacing: 16) {
+            Text("Address")
+            Spacer(minLength: 0)
+            Text(server.address.displayString)
+                .monospaced()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+        .accessibilityElement(children: .combine)
+        LabeledContent("Connection", value: server.useWireGuard ? "WireGuard" : "Direct")
+    }
+
+    #if !targetEnvironment(macCatalyst)
+    private var iosHeader: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
+                ServerThumbnail(image: thumbnail, cornerRadius: 20)
+                if isWide {
+                    HStack(spacing: 16) {
+                        heading
+                        Spacer(minLength: 0)
+                        connectButton
+                    }
+                } else {
+                    heading
+                }
+            }
+
+            if !isWide {
+                connectButton
+            }
+
+            if let failure {
+                Text(failure)
+                    .font(.body)
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textCase(nil)
+    }
+    #endif
 
     /// When the logged session started, in local time, for the exported file's name.
     private var logDate: String {
@@ -198,7 +277,8 @@ struct ServerDetailView: View {
             try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate
         }
         let style = Date.VerbatimFormatStyle(
-            format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased))\(minute: .twoDigits)",
+            format:
+                "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased))\(minute: .twoDigits)",
             timeZone: .current, calendar: .current)
         return (started ?? .now).formatted(style)
     }
@@ -206,14 +286,47 @@ struct ServerDetailView: View {
     private var heading: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(server.displayName)
-                .font(.title.bold())
+                .font(headingFont)
+                .foregroundStyle(.primary)
             LastSessionText(date: server.lastSessionAt)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
     }
 
-    /// Spans the page when narrow; sized to its label beside the name when wide.
+    private var headingFont: Font {
+        #if targetEnvironment(macCatalyst)
+        .title3.weight(.semibold)
+        #else
+        .title.bold()
+        #endif
+    }
+
+    private var editorNameFont: Font {
+        #if targetEnvironment(macCatalyst)
+        .title3.weight(.semibold)
+        #else
+        .title2.bold()
+        #endif
+    }
+
+    private var usesInlineConnectButton: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        isWide
+        #endif
+    }
+
+    private var connectHorizontalPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        4
+        #else
+        usesInlineConnectButton ? 8 : 0
+        #endif
+    }
+
+    /// Spans the page when narrow on iOS; sized to its label beside the name on Catalyst and wide iOS layouts.
     private var connectButton: some View {
         Button {
             onConnect(server)
@@ -221,160 +334,195 @@ struct ServerDetailView: View {
             Label("Connect", systemImage: "play.fill")
                 .labelStyle(.titleAndIcon)
                 .font(.headline)
-                .padding(.horizontal, isWide ? 8 : 0)
-                .frame(maxWidth: isWide ? nil : .infinity)
+                .padding(.horizontal, connectHorizontalPadding)
+                .frame(maxWidth: usesInlineConnectButton ? nil : .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        .fixedSize(horizontal: usesInlineConnectButton, vertical: false)
         .disabled(!canConnect || !server.isValid)
     }
 
     @ViewBuilder private var editor: some View {
         Section {
             HStack(spacing: 16) {
-                ServerThumbnail(image: thumbnail, cornerRadius: 12)
+                ServerThumbnail(image: thumbnail, cornerRadius: 10)
                     .frame(width: 120)
                 TextField(
                     "Name", text: $draft.name,
-                    prompt: Text(draft.address.host.isEmpty ? "Name" : draft.address.host))
-                    .font(.title2.bold())
-                    .submitLabel(.done)
+                    prompt: Text(draft.address.host.isEmpty ? "Name" : draft.address.host)
+                )
+                .font(editorNameFont)
+                .submitLabel(.done)
             }
+            .catalystCardRow(isHeader: true)
         }
 
-        Section("Server") {
-            TextField(
-                draft.useWireGuard ? "Server tunnel IPv4 address" : "Hostname or IP address",
-                text: $draft.address.host)
+        Section {
+            Group {
+                TextField(
+                    draft.useWireGuard ? "Server tunnel IPv4 address" : "Hostname or IP address",
+                    text: $draft.address.host
+                )
                 .textContentType(.URL)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            LabeledContent("UDP port") {
-                TextField("UDP port", text: $draft.address.port, prompt: Text(verbatim: RemoteServer.Address.defaultPort))
+                LabeledContent("UDP port") {
+                    TextField(
+                        "UDP port", text: $draft.address.port,
+                        prompt: Text(verbatim: RemoteServer.Address.defaultPort)
+                    )
                     .keyboardType(.numberPad)
                     .multilineTextAlignment(.trailing)
+                }
             }
+            .catalystCardRow()
+        } header: {
+            sectionHeader("Server")
         }
 
-        Section("Connection") {
+        Section {
             Toggle("WireGuard", isOn: $draft.useWireGuard)
+                .catalystCardRow()
+        } header: {
+            sectionHeader("Connection")
         }
 
         if draft.useWireGuard {
-            Section("WireGuard peer") {
-                TextField("Endpoint (host:port)", text: $draft.wireGuard.endpoint)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Client tunnel IPv4 address", text: $draft.wireGuard.localAddress)
-                    .keyboardType(.decimalPad)
-                TextField("Peer public key", text: $draft.wireGuard.peerPublicKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField("Client private key", text: $draft.wireGuard.privateKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField("Preshared key (optional)", text: $draft.wireGuard.presharedKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+            Section {
+                Group {
+                    TextField("Endpoint (host:port)", text: $draft.wireGuard.endpoint)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Client tunnel IPv4 address", text: $draft.wireGuard.localAddress)
+                        .keyboardType(.decimalPad)
+                    TextField("Peer public key", text: $draft.wireGuard.peerPublicKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Client private key", text: $draft.wireGuard.privateKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Preshared key (optional)", text: $draft.wireGuard.presharedKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .catalystCardRow()
+            } header: {
+                sectionHeader("WireGuard peer")
             }
         }
 
         Section {
-            Toggle("Virtual display", isOn: $draft.stream.usesVirtualDisplay)
-            if draft.stream.usesVirtualDisplay {
-                let vd = RemoteServer.StreamSettings.virtualDisplay(for: sceneSize)
-                LabeledContent(
-                    "Display size",
-                    value: "\(vd.pixelWidth) × \(vd.pixelHeight) (\(vd.logicalWidth) × \(vd.logicalHeight) @2x)"
-                )
-            } else {
-                Picker("Resolution", selection: $draft.stream.resolution) {
-                    ForEach(RemoteServer.StreamSettings.Resolution.allCases) { preset in
-                        Text(preset.title).tag(preset)
-                    }
-                }
-                if draft.stream.resolution == .custom {
-                    LabeledContent("Width") {
-                        HStack(spacing: 6) {
-                            TextField("Width", text: customWidthBinding, prompt: Text("1920"))
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                            Text("px").foregroundStyle(.secondary)
+            Group {
+                Toggle("Virtual display", isOn: $draft.stream.usesVirtualDisplay)
+                if draft.stream.usesVirtualDisplay {
+                    let vd = RemoteServer.StreamSettings.virtualDisplay(for: sceneSize)
+                    LabeledContent(
+                        "Display size",
+                        value:
+                            "\(vd.pixelWidth) × \(vd.pixelHeight) (\(vd.logicalWidth) × \(vd.logicalHeight) @2x)"
+                    )
+                } else {
+                    Picker("Resolution", selection: $draft.stream.resolution) {
+                        ForEach(RemoteServer.StreamSettings.Resolution.allCases) { preset in
+                            Text(preset.title).tag(preset)
                         }
                     }
-                    LabeledContent("Height") {
-                        HStack(spacing: 6) {
-                            TextField("Height", text: customHeightBinding, prompt: Text("1080"))
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                            Text("px").foregroundStyle(.secondary)
+                    if draft.stream.resolution == .custom {
+                        LabeledContent("Width") {
+                            HStack(spacing: 6) {
+                                TextField("Width", text: customWidthBinding, prompt: Text("1920"))
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                Text("px").foregroundStyle(.secondary)
+                            }
+                        }
+                        LabeledContent("Height") {
+                            HStack(spacing: 6) {
+                                TextField("Height", text: customHeightBinding, prompt: Text("1080"))
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                Text("px").foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
-            }
 
-            Picker("Frame rate", selection: frameRateSelection) {
-                ForEach(RemoteServer.StreamSettings.frameRatePresets, id: \.self) { fps in
-                    Text("\(fps) fps").tag(Optional(fps))
+                Picker("Frame rate", selection: frameRateSelection) {
+                    ForEach(RemoteServer.StreamSettings.frameRatePresets, id: \.self) { fps in
+                        Text("\(fps) fps").tag(Optional(fps))
+                    }
+                    Text("Custom").tag(Int?.none)
                 }
-                Text("Custom").tag(Int?.none)
-            }
-            if customFrameRate {
-                LabeledContent("Custom frame rate") {
-                    HStack(spacing: 6) {
-                        TextField("Frame rate", text: customFrameRateBinding, prompt: Text("60"))
+                if customFrameRate {
+                    LabeledContent("Custom frame rate") {
+                        HStack(spacing: 6) {
+                            TextField(
+                                "Frame rate", text: customFrameRateBinding, prompt: Text("60")
+                            )
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
-                        Text("fps").foregroundStyle(.secondary)
+                            Text("fps").foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
 
-            Picker("Max bit rate", selection: bitRateSelection) {
-                ForEach(RemoteServer.StreamSettings.bitRatePresets, id: \.self) { bps in
-                    Text(RemoteServer.StreamSettings.formatBitRate(bps)).tag(Optional(bps))
+                Picker("Max bit rate", selection: bitRateSelection) {
+                    ForEach(RemoteServer.StreamSettings.bitRatePresets, id: \.self) { bps in
+                        Text(RemoteServer.StreamSettings.formatBitRate(bps)).tag(Optional(bps))
+                    }
+                    Text("Custom").tag(Int?.none)
                 }
-                Text("Custom").tag(Int?.none)
-            }
-            if customBitRate {
-                LabeledContent("Custom bit rate") {
-                    HStack(spacing: 6) {
-                        TextField("Bit rate", text: customBitRateBinding, prompt: Text("5"))
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text("Mbps").foregroundStyle(.secondary)
+                if customBitRate {
+                    LabeledContent("Custom bit rate") {
+                        HStack(spacing: 6) {
+                            TextField("Bit rate", text: customBitRateBinding, prompt: Text("5"))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                            Text("Mbps").foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
 
-            Toggle("Stream audio", isOn: $draft.stream.streamsAudio)
+                Toggle("Stream audio", isOn: $draft.stream.streamsAudio)
+            }
+            .catalystCardRow()
         } header: {
-            Text("Stream")
+            sectionHeader("Stream")
         } footer: {
-            if let problem = draft.stream.validationProblem {
-                Text(problem)
-                    .foregroundStyle(.red)
-            } else if draft.stream.usesVirtualDisplay {
-                Text(
-                    "Creates a 2× HiDPI virtual display on the Mac matching this device’s logical screen size and streams it at full resolution. Capture runs at a variable frame rate up to the limit."
-                )
-            } else {
-                Text(
-                    "The display is scaled to fit the selected resolution while keeping its aspect ratio. Capture runs at a variable frame rate up to the limit."
-                )
+            Group {
+                if let problem = draft.stream.validationProblem {
+                    Text(problem)
+                        .foregroundStyle(.red)
+                } else if draft.stream.usesVirtualDisplay {
+                    Text(
+                        "Creates a 2× HiDPI virtual display on the Mac matching this device’s logical screen size and streams it at full resolution. Capture runs at a variable frame rate up to the limit."
+                    )
+                } else {
+                    Text(
+                        "The display is scaled to fit the selected resolution while keeping its aspect ratio. Capture runs at a variable frame rate up to the limit."
+                    )
+                }
             }
+            #if targetEnvironment(macCatalyst)
+            .listRowInsets(Self.catalystSectionFooterInsets)
+            #endif
         }
 
         if saveFailed {
             Text("Couldn’t save the server.")
                 .foregroundStyle(.red)
+                .catalystCardRow()
         }
 
         if !isNew {
             Section {
-                Button("Delete Server", systemImage: "trash", role: .destructive) { onDelete(server) }
+                Button("Delete Server", systemImage: "trash", role: .destructive) {
+                    onDelete(server)
+                }
+                .catalystCardButtonRow()
             }
         }
     }
@@ -502,5 +650,88 @@ private struct SessionLogFile: Transferable {
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .log) { SentTransferredFile($0.url) }
             .suggestedFileName { $0.name }
+    }
+}
+
+#if targetEnvironment(macCatalyst)
+/// UIKit's sliding `UISwitch` ignores `.controlSize` and fixes its frame at iOS's 63×28
+/// touch size, so scale the native switch down to macOS grouped-form proportions.
+private struct CatalystSwitchToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        LabeledContent {
+            Toggle("", isOn: configuration.$isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .scaleEffect(0.7, anchor: .trailing)
+                .frame(height: 20)
+        } label: {
+            configuration.label
+        }
+    }
+}
+
+/// Restores full-row press feedback for action rows when `.listRowBackground` overrides
+/// UIKit's default cell highlight on Mac Catalyst.
+private struct CatalystFormRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(
+                configuration.role == .destructive
+                    ? AnyShapeStyle(.red)
+                    : AnyShapeStyle(.tint)
+            )
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .padding(ServerDetailView.catalystRowInsets)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .background(
+                configuration.isPressed
+                    ? Color.primary.opacity(0.08)
+                    : Color.clear
+            )
+            .contentShape(.rect)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+#endif
+
+extension View {
+    fileprivate func catalystFormChrome() -> some View {
+        #if targetEnvironment(macCatalyst)
+        self
+            .toggleStyle(CatalystSwitchToggleStyle())
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemBackground))
+            .environment(\.defaultMinListRowHeight, 36)
+            .listSectionSpacing(12)
+            .contentMargins(.top, 8, for: .scrollContent)
+        #else
+        self
+        #endif
+    }
+
+    fileprivate func catalystCardRow(isHeader: Bool = false) -> some View {
+        #if targetEnvironment(macCatalyst)
+        self
+            .listRowBackground(ServerDetailView.catalystCardBackground)
+            .listRowSeparatorTint(Color.primary.opacity(0.06))
+            .listRowInsets(
+                isHeader
+                    ? ServerDetailView.catalystHeaderRowInsets
+                    : ServerDetailView.catalystRowInsets)
+        #else
+        self
+        #endif
+    }
+
+    fileprivate func catalystCardButtonRow() -> some View {
+        #if targetEnvironment(macCatalyst)
+        self
+            .buttonStyle(CatalystFormRowButtonStyle())
+            .listRowBackground(ServerDetailView.catalystCardBackground)
+            .listRowSeparatorTint(Color.primary.opacity(0.06))
+            .listRowInsets(EdgeInsets())
+        #else
+        self
+        #endif
     }
 }
