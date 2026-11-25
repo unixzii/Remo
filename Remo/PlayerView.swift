@@ -31,10 +31,22 @@ struct PlayerView: View {
             TrackpadView(
                 onInput: player.handleTrackpad,
                 excludedRects: keyboardVisible ? [keyboardFrame] : [],
-                showsWheel: player.phase == .streaming && player.remoteControlAvailable,
-                controlsPointer: player.phase == .streaming && player.remoteControlAvailable,
+                showsWheel: canControlRemote,
+                controlsPointer: canControlRemote,
                 surface: surface, videoSize: player.videoSize,
-                bottomInset: keyboardVisible ? keyboardFrame.height : 0)
+                bottomInset: keyboardVisible ? keyboardFrame.height : 0,
+                quickActionOrbIcon: canControlRemote ? .system("contextualmenu.and.pointer.arrow") : .system("xmark"),
+                quickActionOrbAccessibilityLabel: canControlRemote
+                    ? "Right-click and quick actions"
+                    : "Disconnect from \(title)",
+                onQuickActionTap: {
+                    if canControlRemote {
+                        player.handleTrackpad(.button(.rightClick))
+                    } else {
+                        player.disconnect()
+                    }
+                },
+                quickActionItems: quickActionItems)
 
             if let status {
                 ProgressView(status)
@@ -103,6 +115,44 @@ struct PlayerView: View {
                 setKeyboardVisible(false)
             }
         }
+    }
+
+    private var canControlRemote: Bool {
+        player.phase == .streaming && player.remoteControlAvailable
+    }
+
+    private var quickActionItems: [QuickActionItem] {
+        var items: [QuickActionItem] = [
+            QuickActionItem(
+                id: "disconnect",
+                title: String(localized: "Disconnect"),
+                systemImage: "xmark",
+                role: .destructive
+            ) {
+                player.disconnect()
+            }
+        ]
+        if canControlRemote {
+            items.append(
+                QuickActionItem(
+                    id: "keyboard",
+                    title: keyboardVisible
+                        ? String(localized: "Hide Keyboard")
+                        : String(localized: "Show Keyboard"),
+                    systemImage: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"
+                ) {
+                    setKeyboardVisible(!keyboardVisible)
+                })
+            items.append(
+                QuickActionItem(
+                    id: "rightClick",
+                    title: String(localized: "Right Click"),
+                    icon: .system("contextualmenu.and.pointer.arrow")
+                ) {
+                    player.handleTrackpad(.button(.rightClick))
+                })
+        }
+        return items
     }
 
     private var status: String? {
