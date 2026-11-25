@@ -163,11 +163,6 @@ struct TrackpadView: View {
 /// A mouse or trackpad drives the pointer absolutely instead: hover moves it, its real buttons
 /// press, and wheel and two-finger scrolls go to the remote screen. A physical scroll never
 /// pans the local picture; a physical pinch still zooms it.
-///
-/// Touches inside `excludedRects` (window space) are left to the SwiftUI controls drawn over it.
-/// Taps are read from raw touches rather than a `UITapGestureRecognizer`: SwiftUI makes buttons
-/// drawn over this view wait for such a recognizer to fail, which it never does for touches it
-/// isn’t given, so those buttons stopped responding.
 private final class TouchSurface: UIScrollView {
     var onGesture: ((TrackpadGesture) -> Void)?
     var videoSize: CGSize? {
@@ -206,7 +201,6 @@ private final class TouchSurface: UIScrollView {
         }
     }
 
-    private var tapStart: (location: CGPoint, time: TimeInterval)?
     private var laidOutSize = CGSize.zero
     /// Hardware moves the cursor directly, so panning the zoomed view after it would chase the
     /// user's own input; finger input still lets the picture follow the cursor.
@@ -259,6 +253,18 @@ private final class TouchSurface: UIScrollView {
         pointerPan.allowedTouchTypes = TouchSurface.fingerTouchTypes
         pointerPan.delegate = gestureRecognizerDelegate
         addGestureRecognizer(pointerPan)
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tap))
+        tap.allowedTouchTypes = TouchSurface.fingerTouchTypes
+        tap.delegate = gestureRecognizerDelegate
+        addGestureRecognizer(tap)
+
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.allowedTouchTypes = TouchSurface.fingerTouchTypes
+        doubleTap.delegate = gestureRecognizerDelegate
+        tap.require(toFail: doubleTap)
+        addGestureRecognizer(doubleTap)
 
         let holdLongPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
         holdLongPress.minimumPressDuration = 0.35
@@ -324,6 +330,14 @@ private final class TouchSurface: UIScrollView {
         let translation = gesture.translation(in: gesture.view)
         gesture.setTranslation(.zero, in: gesture.view)
         onGesture?(.move(translation))
+    }
+
+    @objc func tap(_ gesture: UITapGestureRecognizer) {
+        onGesture?(.button(.leftClick))
+    }
+
+    @objc func doubleTap(_ gesture: UITapGestureRecognizer) {
+        onGesture?(.button(.leftClick, clickCount: 2))
     }
 
     @objc func hold(_ gesture: UILongPressGestureRecognizer) {
@@ -417,15 +431,9 @@ private final class TouchSurface: UIScrollView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         stopMomentum()
-        if let event, pointerTouchBegan(touches, event: event) { return }
-        guard event?.allTouches?.count == 1, let touch = touches.first,
-            !Self.hardwareTouchTypes.contains(touch.type)
-        else {
-            tapStart = nil
-            return
+        if let event {
+            pointerTouchBegan(touches, event: event)
         }
-        tapStart = (touch.location(in: self), touch.timestamp)
-        lastInputWasHardware = false
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -436,22 +444,10 @@ private final class TouchSurface: UIScrollView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
         pointerTouchFinished(touches)
-        guard let start = tapStart,
-            let touch = touches.first(where: { !Self.hardwareTouchTypes.contains($0.type) })
-        else { return }
-        tapStart = nil
-        // The pan and hold recognizers cancel the touch once they begin, so a drag never ends here.
-        let location = touch.location(in: self)
-        if touch.timestamp - start.time < 0.35,
-            hypot(location.x - start.location.x, location.y - start.location.y) < 10
-        {
-            onGesture?(.button(.leftClick))
-        }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesCancelled(touches, with: event)
-        tapStart = nil
         pointerTouchFinished(touches)
     }
 
@@ -483,19 +479,18 @@ private final class TouchSurface: UIScrollView {
         return nil
     }
 
-    private func pointerTouchBegan(_ touches: Set<UITouch>, event: UIEvent) -> Bool {
+    private func pointerTouchBegan(_ touches: Set<UITouch>, event: UIEvent) {
         guard let touch = touches.first(where: { Self.hardwareTouchTypes.contains($0.type) })
-        else { return false }
+        else { return }
         let location = touch.location(in: self)
         lastPointerLocation = location
         guard capture == nil, let position = normalizedPoint(location),
             let button = pressedButton(in: event)
-        else { return true }
+        else { return }
         let count = clickCount(of: touch, button: button)
         capture = (ObjectIdentifier(touch), button, count)
         emitHardwareGesture(.point(position))
         emitHardwareGesture(.button(button.down, clickCount: count))
-        return true
     }
 
     private func pointerTouchMoved(_ touches: Set<UITouch>) {
